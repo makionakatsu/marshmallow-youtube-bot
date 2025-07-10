@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>設定</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 350px;
+      padding: 15px;
+      margin: 0;
+      background: white;
+      color: #333;
+      line-height: 1.4;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e5e5e5;
+      position: relative;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+      color: #333;
+    }
+
+    .back-button {
+      position: absolute;
+      top: 2px;
+      left: 0;
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: #f3f4f6;
+      color: #6b7280;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .back-button:hover {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .section {
+      margin-bottom: 15px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #f9fafb;
+    }
+
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-group {
+      margin-bottom: 10px;
+    }
+
+    .input-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    .input-container input, 
+    .input-container textarea {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      color: #333;
+      background: white;
+    }
+
+    .input-container input:focus,
+    .input-container textarea:focus {
+      outline: none;
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa;
+    }
+
+    .input-with-button {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+
+    .input-with-button input {
+      flex: 1;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      background: white;
+      color: #374151;
+    }
+
+    .btn:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+
+    .btn-primary {
+      background: #60a5fa;
+      color: white;
+      border-color: #60a5fa;
+    }
+
+    .btn-primary:hover {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    .btn-ghost {
+      background: white;
+      color: #6b7280;
+      border-color: #d1d5db;
+    }
+
+    .btn-ghost:hover {
+      background: #f3f4f6;
+    }
+
+    .btn-icon {
+      min-width: 36px;
+      padding: 6px;
+      font-size: 0.7rem;
+    }
+
+    .button-right {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .status-message {
+      font-size: 0.7rem;
+      margin-top: 4px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      background: #f9fafb;
+      color: #6b7280;
+    }
+
+    .status-message.success {
+      background: #ecfdf5;
+      color: #065f46;
+    }
+
+    .status-message.error {
+      background: #fef2f2;
+      color: #991b1b;
+    }
+
+    .status-message.warning {
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: auto;
+    }
+
+    .checkbox-group label {
+      margin-bottom: 0;
+      font-size: 0.75rem;
+    }
+
+    .textarea-container {
+      margin-bottom: 8px;
+    }
+
+    .textarea-container textarea {
+      height: 80px;
+      resize: vertical;
+      font-family: monospace;
+    }
+
+    .help-text {
+      font-size: 0.65rem;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button id="backButton" class="back-button">←</button>
+    <h1>設定</h1>
+  </div>
+
+  <!-- API Key Section -->
+  <div class="section">
+    <div class="section-title">YouTube Data API v3</div>
+    <div class="input-group">
+      <label for="youtubeApiKeyInput">APIキー</label>
+      <div class="input-with-button">
+        <div class="input-container">
+          <input type="password" id="youtubeApiKeyInput" placeholder="AIza...">
+        </div>
+        <button id="toggleApiKeyVisibility" class="btn btn-ghost btn-icon">Show</button>
+      </div>
+      <div class="button-right">
+        <button id="saveApiKeyButton" class="btn btn-primary">保存</button>
+      </div>
+      <div id="apiKeyStatusMessage" class="status-message"></div>
+    </div>
+  </div>
+
+  <!-- Posting Settings Section -->
+  <div class="section">
+    <div class="section-title">投稿設定</div>
+    <div class="input-group">
+      <label for="postIntervalInput">自動投稿間隔（秒）</label>
+      <div class="input-container">
+        <input type="number" id="postIntervalInput" min="30" value="120" placeholder="120">
+      </div>
+      <div class="help-text">デフォルト: 120秒（2分）、最小: 30秒</div>
+    </div>
+    <div class="input-group">
+      <label for="maxRetryInput">最大リトライ回数</label>
+      <div class="input-container">
+        <input type="number" id="maxRetryInput" min="1" max="10" value="3" placeholder="3">
+      </div>
+      <div class="help-text">投稿失敗時のリトライ回数（1-10回）</div>
+    </div>
+    <div class="input-group">
+      <label for="questionPrefixInput">質問接頭辞</label>
+      <div class="input-container">
+        <input type="text" id="questionPrefixInput" value="Q: " placeholder="Q: ">
+      </div>
+      <div class="help-text">質問の前に付ける文字列</div>
+    </div>
+  </div>
+
+  <!-- NG Words Section -->
+  <div class="section">
+    <div class="section-title">NGワード設定</div>
+    <div class="input-group">
+      <label for="ngWordsTextarea">NGワードリスト</label>
+      <div class="textarea-container">
+        <textarea id="ngWordsTextarea" placeholder="スパム&#10;宣伝&#10;悪口"></textarea>
+      </div>
+      <div class="help-text">1行に1つずつNGワードを入力してください</div>
+      <div class="button-right">
+        <button id="saveNgWordsButton" class="btn btn-primary">保存</button>
+      </div>
+      <div id="ngWordsStatusMessage" class="status-message"></div>
+    </div>
+  </div>
+
+  <!-- Other Settings Section -->
+  <div class="section">
+    <div class="section-title">その他の設定</div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="testModeCheckbox">
+      <label for="testModeCheckbox">テストモードを有効にする</label>
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="notificationsCheckbox" checked>
+      <label for="notificationsCheckbox">エラー通知を表示する</label>
+    </div>
+    <div class="button-right">
+      <button id="saveOtherSettingsButton" class="btn btn-primary">保存</button>
+    </div>
+    <div id="otherSettingsStatusMessage" class="status-message"></div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
