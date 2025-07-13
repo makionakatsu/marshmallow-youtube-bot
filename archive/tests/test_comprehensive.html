@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Script V2.0 総合テストスイート</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .test-suite {
+            background: white;
+            margin: 20px 0;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 5px solid #007bff;
+        }
+        .test-suite h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .run-all-btn {
+            background: linear-gradient(135deg, #27ae60, #229954);
+            font-size: 16px;
+            padding: 15px 30px;
+        }
+        .clear-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border-left: 4px solid;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+        }
+        .success {
+            background-color: #d1f2eb;
+            border-left-color: #27ae60;
+            color: #0e5233;
+        }
+        .error {
+            background-color: #fadbd8;
+            border-left-color: #e74c3c;
+            color: #641e16;
+        }
+        .info {
+            background-color: #d6eaf8;
+            border-left-color: #3498db;
+            color: #1b4f72;
+        }
+        .warning {
+            background-color: #fcf3cf;
+            border-left-color: #f39c12;
+            color: #7d6608;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #27ae60);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        #console-output {
+            background-color: #2c3e50;
+            color: #2ecc71;
+            font-family: 'Consolas', 'Monaco', monospace;
+            padding: 20px;
+            height: 300px;
+            overflow-y: auto;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.4;
+            border: 1px solid #34495e;
+        }
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .timestamp {
+            color: #95a5a6;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Marshmallow Content Script V2.0</h1>
+        <h2>総合テストスイート</h2>
+        <p>リファクタリング版の品質検証・パフォーマンステスト</p>
+    </div>
+
+    <div class="test-suite">
+        <h2>📊 テスト実行制御</h2>
+        <div class="test-controls">
+            <button class="run-all-btn" onclick="runComprehensiveTest()">
+                <span id="main-btn-text">🎯 全テスト実行</span>
+                <span id="main-btn-loading" class="loading" style="display: none;"></span>
+            </button>
+            <button class="clear-btn" onclick="clearAllResults()">🗑️ 結果クリア</button>
+        </div>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="overall-progress"></div>
+        </div>
+        <div id="overall-status"></div>
+
+        <div class="summary-stats" id="summary-stats" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-number" id="total-tests">0</div>
+                <div class="stat-label">総テスト数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="passed-tests">0</div>
+                <div class="stat-label">成功</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="failed-tests">0</div>
+                <div class="stat-label">失敗</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="success-rate">0%</div>
+                <div class="stat-label">成功率</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-suite">
+        <h2>🔧 1. 基本機能テスト</h2>
+        <div class="test-controls">
+            <button onclick="runBasicFunctionTests()">基本機能テスト実行</button>
+        </div>
+        <div id="basic-results"></div>
+    </div>
+
+    <div class="test-suite">
+        <h2>📡 2. Background Script 通信テスト</h2>
+        <div class="test-controls">
+            <button onclick="runCommunicationTests()">通信テスト実行</button>
+        </div>
+        <div id="communication-results"></div>
+    </div>
+
+    <div class="test-suite">
+        <h2>⚠️ 3. エラーシナリオテスト</h2>
+        <div class="test-controls">
+            <button onclick="runErrorTests()">エラーテスト実行</button>
+        </div>
+        <div id="error-results"></div>
+    </div>
+
+    <div class="test-suite">
+        <h2>⚡ 4. パフォーマンステスト</h2>
+        <div class="test-controls">
+            <button onclick="runPerformanceTestsuite()">パフォーマンステスト実行</button>
+        </div>
+        <div id="performance-results"></div>
+    </div>
+
+    <div class="test-suite">
+        <h2>📈 5. コンソール出力</h2>
+        <div class="test-controls">
+            <button onclick="clearConsole()">コンソールクリア</button>
+            <button onclick="exportResults()">結果エクスポート</button>
+        </div>
+        <div id="console-output"></div>
+    </div>
+
+    <!-- スクリプト読み込み -->
+    <script src="content_script_v2.js"></script>
+    <script src="test_background_communication.js"></script>
+    <script src="test_error_scenarios.js"></script>
+    <script src="test_performance.js"></script>
+
+    <script>
+        // グローバル変数
+        let allTestResults = {
+            basic: null,
+            communication: null,
+            error: null,
+            performance: null
+        };
+
+        // コンソール出力の管理
+        const originalConsole = {
+            log: console.log,
+            warn: console.warn,
+            error: console.error,
+            info: console.info
+        };
+
+        function logToScreen(message, type = 'log') {
+            const output = document.getElementById('console-output');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            
+            let color = '#2ecc71';
+            if (type === 'warn') color = '#f39c12';
+            if (type === 'error') color = '#e74c3c';
+            if (type === 'info') color = '#3498db';
+            
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span style="color: ${color}">${type.toUpperCase()}:</span> ${message}`;
+            output.appendChild(logEntry);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // コンソールをハック
+        console.log = function(...args) {
+            originalConsole.log.apply(console, args);
+            logToScreen(args.join(' '), 'log');
+        };
+
+        console.warn = function(...args) {
+            originalConsole.warn.apply(console, args);
+            logToScreen(args.join(' '), 'warn');
+        };
+
+        console.error = function(...args) {
+            originalConsole.error.apply(console, args);
+            logToScreen(args.join(' '), 'error');
+        };
+
+        console.info = function(...args) {
+            originalConsole.info.apply(console, args);
+            logToScreen(args.join(' '), 'info');
+        };
+
+        function clearConsole() {
+            document.getElementById('console-output').innerHTML = '';
+        }
+
+        function showResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const result = document.createElement('div');
+            result.className = `test-result ${type}`;
+            result.textContent = message;
+            container.appendChild(result);
+        }
+
+        function clearResults(containerId) {
+            document.getElementById(containerId).innerHTML = '';
+        }
+
+        function clearAllResults() {
+            ['basic-results', 'communication-results', 'error-results', 'performance-results'].forEach(clearResults);
+            clearConsole();
+            document.getElementById('summary-stats').style.display = 'none';
+            document.getElementById('overall-progress').style.width = '0%';
+            document.getElementById('overall-status').innerHTML = '';
+            allTestResults = { basic: null, communication: null, error: null, performance: null };
+        }
+
+        function updateProgress(completed, total) {
+            const percentage = (completed / total) * 100;
+            document.getElementById('overall-progress').style.width = percentage + '%';
+            document.getElementById('overall-status').innerHTML = `進行状況: ${completed}/${total} (${Math.round(percentage)}%)`;
+        }
+
+        function updateSummaryStats() {
+            let totalTests = 0;
+            let passedTests = 0;
+
+            Object.values(allTestResults).forEach(result => {
+                if (result && result.summary) {
+                    totalTests += result.summary.total;
+                    passedTests += result.summary.success;
+                }
+            });
+
+            if (totalTests > 0) {
+                const successRate = Math.round((passedTests / totalTests) * 100);
+                const failedTests = totalTests - passedTests;
+
+                document.getElementById('total-tests').textContent = totalTests;
+                document.getElementById('passed-tests').textContent = passedTests;
+                document.getElementById('failed-tests').textContent = failedTests;
+                document.getElementById('success-rate').textContent = successRate + '%';
+                document.getElementById('summary-stats').style.display = 'grid';
+            }
+        }
+
+        // 1. 基本機能テスト
+        async function runBasicFunctionTests() {
+            clearResults('basic-results');
+            showResult('basic-results', '基本機能テストを開始します...', 'info');
+
+            try {
+                // 基本機能テストの実装（簡略版）
+                const tests = [
+                    { name: 'クラス初期化', test: testClassInitialization },
+                    { name: 'ExtensionContextManager', test: testExtensionContextManager },
+                    { name: 'MarshmallowPageInteractor', test: testPageInteractor },
+                    { name: 'DOMWatcher', test: testDOMWatcher },
+                    { name: 'アプリケーション統合', test: testFullApplication }
+                ];
+
+                let successCount = 0;
+                for (const { name, test } of tests) {
+                    try {
+                        await test();
+                        showResult('basic-results', `✓ ${name}: 成功`, 'success');
+                        successCount++;
+                    } catch (error) {
+                        showResult('basic-results', `✗ ${name}: ${error.message}`, 'error');
+                    }
+                }
+
+                allTestResults.basic = {
+                    summary: {
+                        total: tests.length,
+                        success: successCount
+                    }
+                };
+
+                showResult('basic-results', `基本機能テスト完了: ${successCount}/${tests.length} 成功`, 'info');
+
+            } catch (error) {
+                showResult('basic-results', `基本機能テストエラー: ${error.message}`, 'error');
+            }
+        }
+
+        // 2. Background Script 通信テスト
+        async function runCommunicationTests() {
+            clearResults('communication-results');
+            showResult('communication-results', 'Background Script通信テストを開始します...', 'info');
+
+            try {
+                const result = await runBackgroundCommunicationTests();
+                allTestResults.communication = result;
+
+                result.results.forEach(test => {
+                    const type = test.status === 'success' ? 'success' : 'error';
+                    const icon = test.status === 'success' ? '✓' : '✗';
+                    showResult('communication-results', `${icon} ${test.test}: ${test.details}`, type);
+                });
+
+                showResult('communication-results', 
+                    `通信テスト完了: ${result.summary.success}/${result.summary.total} 成功 (${result.summary.successRate}%)`, 
+                    'info');
+
+            } catch (error) {
+                showResult('communication-results', `通信テストエラー: ${error.message}`, 'error');
+            }
+        }
+
+        // 3. エラーシナリオテスト
+        async function runErrorTests() {
+            clearResults('error-results');
+            showResult('error-results', 'エラーシナリオテストを開始します...', 'info');
+
+            try {
+                const result = await runErrorScenarioTests();
+                allTestResults.error = result;
+
+                result.results.forEach(test => {
+                    const type = test.status === 'success' ? 'success' : 'error';
+                    const icon = test.status === 'success' ? '✓' : '✗';
+                    showResult('error-results', `${icon} ${test.test}: ${test.details}`, type);
+                });
+
+                showResult('error-results', 
+                    `エラーテスト完了: ${result.summary.success}/${result.summary.total} 成功 (${result.summary.successRate}%)`, 
+                    'info');
+
+            } catch (error) {
+                showResult('error-results', `エラーテストエラー: ${error.message}`, 'error');
+            }
+        }
+
+        // 4. パフォーマンステスト
+        async function runPerformanceTestsuite() {
+            clearResults('performance-results');
+            showResult('performance-results', 'パフォーマンステストを開始します...', 'info');
+
+            try {
+                const result = await runPerformanceTests();
+                allTestResults.performance = result;
+
+                result.results.forEach(test => {
+                    const type = test.status === 'success' ? 'success' : 'error';
+                    const icon = test.status === 'success' ? '✓' : '✗';
+                    showResult('performance-results', `${icon} ${test.test}: ${test.details}`, type);
+                });
+
+                showResult('performance-results', 
+                    `パフォーマンステスト完了: ${result.summary.success}/${result.summary.total} 成功 (${result.summary.successRate}%)`, 
+                    'info');
+
+            } catch (error) {
+                showResult('performance-results', `パフォーマンステストエラー: ${error.message}`, 'error');
+            }
+        }
+
+        // 総合テスト実行
+        async function runComprehensiveTest() {
+            const button = document.querySelector('.run-all-btn');
+            const btnText = document.getElementById('main-btn-text');
+            const btnLoading = document.getElementById('main-btn-loading');
+            
+            button.disabled = true;
+            btnText.style.display = 'none';
+            btnLoading.style.display = 'inline-block';
+
+            clearAllResults();
+            console.log('=== 総合テストスイート開始 ===');
+
+            try {
+                const tests = [
+                    { name: '基本機能テスト', fn: runBasicFunctionTests },
+                    { name: '通信テスト', fn: runCommunicationTests },
+                    { name: 'エラーテスト', fn: runErrorTests },
+                    { name: 'パフォーマンステスト', fn: runPerformanceTestsuite }
+                ];
+
+                for (let i = 0; i < tests.length; i++) {
+                    const test = tests[i];
+                    console.log(`\n--- ${test.name} 開始 ---`);
+                    updateProgress(i, tests.length);
+                    
+                    await test.fn();
+                    
+                    console.log(`--- ${test.name} 完了 ---\n`);
+                    updateProgress(i + 1, tests.length);
+                    updateSummaryStats();
+                    
+                    // テスト間に少し休憩
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                console.log('=== 総合テストスイート完了 ===');
+                updateSummaryStats();
+
+            } catch (error) {
+                console.error('総合テスト実行エラー:', error.message);
+            } finally {
+                button.disabled = false;
+                btnText.style.display = 'inline';
+                btnLoading.style.display = 'none';
+            }
+        }
+
+        // 結果エクスポート
+        function exportResults() {
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            const results = {
+                timestamp: new Date().toISOString(),
+                browser: navigator.userAgent,
+                testResults: allTestResults
+            };
+
+            const blob = new Blob([JSON.stringify(results, null, 2)], {
+                type: 'application/json'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `marshmallow-v2-test-results-${timestamp}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            console.log('テスト結果をエクスポートしました');
+        }
+
+        // 基本機能テスト用の関数（簡略版実装）
+        async function testClassInitialization() {
+            new ExtensionContextManager();
+            new BackgroundCommunicator(new ExtensionContextManager());
+            new MarshmallowPageInteractor();
+            new DOMWatcher(() => {});
+            new PollingManager(() => {});
+            new ContentScriptApplication();
+        }
+
+        async function testExtensionContextManager() {
+            const contextManager = new ExtensionContextManager();
+            contextManager.isAlive();
+            contextManager.addObserver({ onContextChange: () => {} });
+        }
+
+        async function testPageInteractor() {
+            const pageInteractor = new MarshmallowPageInteractor();
+            pageInteractor.getUserLoginStatus();
+            pageInteractor.extractNewMessages();
+        }
+
+        async function testDOMWatcher() {
+            const domWatcher = new DOMWatcher(() => {});
+            domWatcher.startWatching();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            domWatcher.stopWatching();
+        }
+
+        async function testFullApplication() {
+            if (!window.chrome) {
+                window.chrome = {
+                    runtime: { id: 'test-extension-id', sendMessage: () => {} },
+                    storage: { local: { get: () => {}, set: () => {} } }
+                };
+            }
+            
+            const app = new ContentScriptApplication();
+            await app.initialize();
+            app.start();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            app.shutdown();
+        }
+
+        // ページ読み込み完了時の初期化
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Content Script V2.0 総合テストスイート準備完了');
+            console.log('「全テスト実行」ボタンをクリックして品質検証を開始してください');
+        });
+    </script>
+</body>
+</html>

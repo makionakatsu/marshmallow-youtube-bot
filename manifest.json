@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Marshmallow to YouTube Bot",
-  "version": "1.0",
+  "version": "2.0",
   "description": "マシュマロからYouTube Live Chatに質問を自動投稿するBot",
   "permissions": [
     "storage",
@@ -15,7 +15,7 @@
     "https://www.googleapis.com/*"
   ],
   "oauth2": {
-    "client_id": "YOUR_ACTUAL_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "1038995061271-avf143c6lpef1hc5iirkj7cih82b7ea1.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/youtube.force-ssl"
     ]
