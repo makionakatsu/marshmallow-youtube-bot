@@ -36,8 +36,14 @@ class ExtensionContextManager {
       }
       return this.isContextValid;
     } catch (error) {
-      console.warn('Extension context check failed:', error.message);
-      this.isContextValid = false;
+      // Extension Context が無効化されている場合、プロパティアクセスも失敗する可能性
+      try {
+        console.warn('Extension context check failed:', error.message);
+        this.isContextValid = false;
+      } catch (nestedError) {
+        // プロパティアクセスも失敗した場合は何もしない
+        console.warn('Extension context completely invalidated');
+      }
       return false;
     }
   }
@@ -46,13 +52,19 @@ class ExtensionContextManager {
    * 全システムの安全なシャットダウン実行
    */
   initiateShutdown() {
-    if (this.shutdownInProgress) {
-      return; // 既にシャットダウン処理中
+    try {
+      if (this.shutdownInProgress) {
+        return; // 既にシャットダウン処理中
+      }
+      
+      this.shutdownInProgress = true;
+      this.isContextValid = false;
+      console.warn('Extension context invalidated. Initiating graceful shutdown.');
+    } catch (error) {
+      // Extension Context が完全に無効化されている場合
+      console.warn('Extension context completely invalidated during shutdown');
+      return;
     }
-    
-    this.shutdownInProgress = true;
-    this.isContextValid = false;
-    console.warn('Extension context invalidated. Initiating graceful shutdown.');
     
     // 登録されたオブザーバーに通知
     this.notifyObservers('shutdown');
