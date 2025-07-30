@@ -1,9 +1,108 @@
 // background.service_worker.js
 
+// 共通ユーティリティのインポート
+importScripts('src/shared/utils/AsyncMutex.js');
+importScripts('src/shared/utils/OptimizedStorageService.js');
+importScripts('src/shared/errors/UnifiedErrorHandler.js');
+importScripts('src/shared/config/AppConfig.js');
+importScripts('src/shared/security/InputValidator.js');
+
 let isRunning = false;
+
+// 改善された排他制御システム
+const queueMutex = new AsyncMutex();
+const storageService = new OptimizedStorageService();
+const errorHandler = new UnifiedErrorHandler();
+const appConfig = new AppConfig();
+const inputValidator = new InputValidator();
+
+// デバッグモードの設定
+const DEBUG_MODE = false;
+const TEST_MODE = false; // OAuth認証を有効化
+if (DEBUG_MODE) {
+  queueMutex.setDebug(true);
+  storageService.updateConfig({ enableDebug: true });
+  errorHandler.updateConfig({ enableDebug: true });
+}
+
+/**
+ * 質問キューへの排他制御付きアクセス（改善版）
+ * @param {Function} operation 
+ * @returns {Promise}
+ */
+async function withQueueLock(operation) {
+  try {
+    return await queueMutex.withLock(operation);
+  } catch (error) {
+    await errorHandler.handleError(error, 'withQueueLock');
+    throw error;
+  }
+}
 
 // 投稿失敗時のリトライカウントを保持するマップ
 const postRetryCounts = new Map();
+
+// メモリリーク対策: 古いリトライカウントを定期的にクリア（改善版）
+let cleanupIntervalId = null;
+
+/**
+ * メモリクリーンアップを開始
+ */
+function startMemoryCleanup() {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+  }
+  
+  cleanupIntervalId = setInterval(async () => {
+    try {
+      const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24時間前
+      let cleanedCount = 0;
+      
+      for (const [questionId, data] of postRetryCounts.entries()) {
+        // データにタイムスタンプがない場合は削除
+        if (!data.timestamp || data.timestamp < cutoffTime) {
+          postRetryCounts.delete(questionId);
+          cleanedCount++;
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        console.log(`[MemoryCleanup] Cleaned ${cleanedCount} old retry counts from memory`);
+      }
+      
+      // ストレージサービスのキャッシュもクリーンアップ
+      if (storageService.cache.size > appConfig.get('performance.maxCacheSize')) {
+        storageService.clearCache();
+        console.log('[MemoryCleanup] Storage cache cleared due to size limit');
+      }
+      
+    } catch (error) {
+      await errorHandler.handleError(error, 'memoryCleanup');
+    }
+  }, appConfig.get('queue.cleanupInterval'));
+}
+
+/**
+ * メモリクリーンアップを停止
+ */
+function stopMemoryCleanup() {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+  }
+}
+
+// Extension の停止時にクリーンアップを実行
+chrome.runtime.onSuspend.addListener(() => {
+  console.log('[Cleanup] Extension suspending, performing cleanup...');
+  stopMemoryCleanup();
+  queueMutex.queue = []; // キューをクリア
+  postRetryCounts.clear(); // リトライカウントをクリア
+  storageService.clearCache(); // キャッシュをクリア
+});
+
+// クリーンアップを開始
+startMemoryCleanup();
 
 // 初期設定の読み込み
 chrome.runtime.onInstalled.addListener(() => {
@@ -79,30 +178,48 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // content_script からのメッセージを受信
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'newMarshmallowMessages') {
-    handleNewMarshmallowMessages(request).then(sendResponse).catch(error => {
-      console.error('Error handling new marshmallow messages:', error);
+    handleNewMarshmallowMessages(request).then(sendResponse).catch(async error => {
+      await errorHandler.handleError(error, 'handleNewMarshmallowMessages');
       sendResponse({ error: error.message });
     });
     return true; // 非同期処理のためにメッセージチャンネルを開いておく
   } else if (request.action === 'getLiveVideoInfo') {
     console.log('Received getLiveVideoInfo request for video ID:', request.videoId);
-    getLiveVideoInfo(request.videoId, request.apiKey).then(response => {
-      console.log('Returning video info:', response);
-      sendResponse(response);
-    }).catch(error => {
-      console.error('Error getting video info:', error);
-      sendResponse({ error: error.message });
-    });
+    
+    (async () => {
+      try {
+        // APIキーを内部で取得する
+        const apiKey = await getYoutubeApiKey();
+        const response = await getLiveVideoInfo(request.videoId, apiKey);
+        console.log('Returning video info:', response);
+        sendResponse(response);
+      } catch (error) {
+        await errorHandler.handleError(error, 'getLiveVideoInfo');
+        sendResponse({ error: error.message });
+      }
+    })();
+    
     return true; // 非同期処理のためにメッセージチャンネルを開いておく
   } else if (request.action === 'manualPost') {
-    console.log('Manual post requested');
-    postQuestionToLiveChat().then((result) => {
-      console.log('Manual post completed successfully:', result);
-      sendResponse({ success: true, message: result || 'Posted successfully' });
-    }).catch(error => {
-      console.error('Manual post failed:', error);
-      sendResponse({ success: false, error: error.message || 'Unknown error' });
-    });
+    console.log('Manual post requested for question ID:', request.questionId);
+    
+    (async () => {
+      try {
+        if (request.questionId) {
+          // 特定の質問を手動送信
+          const result = await postSpecificQuestion(request.questionId);
+          sendResponse({ success: true, message: result || 'Posted successfully' });
+        } else {
+          // 次の質問を自動送信
+          const result = await postQuestionToLiveChat();
+          sendResponse({ success: true, message: result || 'Posted successfully' });
+        }
+      } catch (error) {
+        await errorHandler.handleError(error, 'manualPost');
+        sendResponse({ success: false, error: error.message || 'Unknown error' });
+      }
+    })();
+    
     return true; // 非同期処理のためにメッセージチャンネルを開いておく
   } else if (request.action === 'testApiKeyDecryption') {
     console.log('🔍 API Key decryption test requested');
@@ -136,8 +253,81 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     
     return true;
+  } else if (request.action === 'setQuestionAsNext') {
+    console.log('Setting question as next:', request.questionId);
+    
+    (async () => {
+      try {
+        await withQueueLock(async () => {
+          const queue = await getQuestionQueue();
+          
+          // 既存のnextステータスをpendingに戻す
+          queue.forEach(q => {
+            if (q.status === 'next') {
+              q.status = 'pending';
+            }
+          });
+          
+          // 指定された質問をnextに設定
+          const targetQuestion = queue.find(q => q.id === request.questionId);
+          if (targetQuestion && targetQuestion.status === 'pending') {
+            targetQuestion.status = 'next';
+            await saveQuestionQueue(queue);
+            sendResponse({ success: true, message: 'Question set as next' });
+          } else {
+            sendResponse({ success: false, error: 'Question not found or not pending' });
+          }
+        });
+      } catch (error) {
+        console.error('Failed to set question as next:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    
+    return true;
   }
 });
+
+/**
+ * エラーメッセージをユーザーフレンドリーに変換
+ * @param {Error} error 
+ * @returns {string}
+ */
+function getUserFriendlyErrorMessage(error) {
+  const errorMessage = error.message || error.toString();
+  
+  if (errorMessage.includes('AUTHENTICATION_FAILED')) {
+    return 'YouTube認証が失敗しました。設定画面でOAuth認証を再度行ってください。';
+  }
+  if (errorMessage.includes('PERMISSION_DENIED')) {
+    return 'YouTube APIの権限が不足しています。APIキーとOAuth設定を確認してください。';
+  }
+  if (errorMessage.includes('RATE_LIMITED')) {
+    const seconds = errorMessage.split(':')[1] || '60';
+    return `YouTube APIの制限に達しました。${seconds}秒後に再試行してください。`;
+  }
+  if (errorMessage.includes('BAD_REQUEST')) {
+    return 'リクエストが無効です。ライブ配信が終了している可能性があります。';
+  }
+  if (errorMessage.includes('Live Chat ID is not set')) {
+    return 'ライブチャットIDが設定されていません。YouTube配信URLを設定してください。';
+  }
+  if (errorMessage.includes('YouTube Data API Key is not set')) {
+    return 'YouTube APIキーが設定されていません。設定画面でAPIキーを入力してください。';
+  }
+  if (errorMessage.includes('OAuth2 token not available')) {
+    return 'YouTube認証が完了していません。設定画面でOAuth認証を行ってください。';
+  }
+  if (errorMessage.includes('Question contains NG word')) {
+    return '質問にNGワードが含まれているためスキップしました。';
+  }
+  if (errorMessage.includes('No pending questions')) {
+    return '送信待ちの質問がありません。';
+  }
+  
+  // デフォルトメッセージ
+  return `エラーが発生しました: ${errorMessage.substring(0, 100)}`;
+}
 
 /**
  * 新しいマシュマロメッセージを処理する
@@ -191,38 +381,90 @@ async function handleNewMarshmallowMessages(request) {
 }
 
 /**
- * 質問キューを chrome.storage.local から取得する
+ * 質問キューを取得する（改善版）
  * @returns {Promise<Array>}
  */
 async function getQuestionQueue() {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get('questionQueue', (data) => {
-      if (chrome.runtime.lastError) {
-        console.error('Storage error while getting question queue:', chrome.runtime.lastError);
-        reject(new Error(`Storage error: ${chrome.runtime.lastError.message}`));
-      } else {
-        resolve(data.questionQueue || []);
-      }
-    });
-  });
+  try {
+    const queue = await storageService.get('questionQueue', []);
+    
+    // データの整合性チェック
+    if (!Array.isArray(queue)) {
+      console.warn('[getQuestionQueue] Invalid queue data format, resetting to empty array');
+      await storageService.set('questionQueue', []);
+      return [];
+    }
+    
+    return queue;
+  } catch (error) {
+    await errorHandler.handleError(error, 'getQuestionQueue');
+    return []; // エラー時は空の配列を返す
+  }
 }
 
 /**
- * 質問キューを chrome.storage.local に保存する
+ * 質問キューを保存する（改善版）
  * @param {Array} queue
  * @returns {Promise<void>}
  */
 async function saveQuestionQueue(queue) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.set({ questionQueue: queue }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('Storage error while saving question queue:', chrome.runtime.lastError);
-        reject(new Error(`Storage error: ${chrome.runtime.lastError.message}`));
-      } else {
-        resolve();
-      }
-    });
-  });
+  try {
+    // データの検証
+    if (!Array.isArray(queue)) {
+      throw new Error('Queue must be an array');
+    }
+    
+    // 最大サイズのチェック
+    const maxSize = appConfig.get('queue.maxSize');
+    if (queue.length > maxSize) {
+      console.warn(`[saveQuestionQueue] Queue size (${queue.length}) exceeds limit (${maxSize}), truncating...`);
+      queue = queue.slice(0, maxSize);
+    }
+    
+    await storageService.set('questionQueue', queue);
+    
+    if (DEBUG_MODE) {
+      console.log(`[saveQuestionQueue] Saved queue with ${queue.length} items`);
+    }
+    
+  } catch (error) {
+    await errorHandler.handleError(error, 'saveQuestionQueue');
+    throw error;
+  }
+}
+
+/**
+ * 特定の質問IDの質問を投稿する
+ * @param {string} questionId
+ * @returns {Promise<Object>}
+ */
+async function postSpecificQuestion(questionId) {
+  console.log('Posting specific question to Live Chat:', questionId);
+  updateBadge('running');
+
+  try {
+    let currentQueue = await getQuestionQueue();
+    const questionToPost = currentQueue.find(q => q.id === questionId);
+
+    if (!questionToPost) {
+      throw new Error('Question not found in queue: ' + questionId);
+    }
+
+    if (questionToPost.status === 'sent') {
+      throw new Error('Question already sent: ' + questionId);
+    }
+
+    // ステータスをnextに変更（投稿処理は行わない）
+    questionToPost.status = 'next';
+    await saveQuestionQueue(currentQueue);
+
+    // 共通の投稿ロジックを使用
+    return await performActualPost(questionToPost, currentQueue);
+  } catch (error) {
+    await errorHandler.handleError(error, 'postSpecificQuestion');
+    updateBadge('error');
+    throw error;
+  }
 }
 
 async function postQuestionToLiveChat() {
@@ -242,37 +484,80 @@ async function postQuestionToLiveChat() {
       throw new Error('Failed to get question queue: ' + storageError.message);
     }
     
-    const questionToPost = currentQueue.find(q => q.status === 'pending');
-
+    // 既にnextステータスの質問があるかチェック
+    let questionToPost = currentQueue.find(q => q.status === 'next');
+    
     if (!questionToPost) {
-      console.log('⚠️ No pending questions to post.');
-      console.log('⚠️ Queue contents:', currentQueue.map(q => ({ id: q.id, status: q.status, text: q.text.substring(0, 30) + '...' })));
-      updateBadge('idle'); // 投稿するものがない場合はアイドル状態に戻す
-      throw new Error('No pending questions to post. Queue has ' + currentQueue.length + ' total questions.');
-    }
+      // nextステータスの質問がない場合、pending状態のうち最も古いものを選択してnextに変更
+      const pendingQuestions = currentQueue.filter(q => q.status === 'pending');
+      if (pendingQuestions.length === 0) {
+        console.log('⚠️ No pending questions to post.');
+        console.log('⚠️ Queue contents:', currentQueue.map(q => ({ id: q.id, status: q.status, text: q.text.substring(0, 30) + '...' })));
+        updateBadge('idle');
+        throw new Error('No pending questions to post. Queue has ' + currentQueue.length + ' total questions.');
+      }
 
-    console.log('Step 2: Processing question:', questionToPost.text.substring(0, 50) + '...');
-
-    // FR-4: 投稿内容の整形
-    const formattedText = await formatQuestionText(questionToPost.text);
-
-    // FR-9, 7.1: 入力サニタイズ (XSS防止)
-    const sanitizedText = sanitizeTextForYouTube(formattedText);
-
-    // FR-5: NGワードフィルタリング
-    console.log('Step 3: Checking NG keywords...');
-    const ngKeywords = await getNgKeywords(); // NGワードリストを取得
-    const isNg = ngKeywords.some(keyword => sanitizedText.includes(keyword)); // サニタイズ後のテキストでチェック
-
-    if (isNg) {
-      console.log('Question contains NG word. Skipping.');
-      questionToPost.status = 'skipped';
+      // 最も古いpending質問を取得（received_atで昇順ソート）
+      pendingQuestions.sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime());
+      questionToPost = pendingQuestions[0];
+      
+      // ステータスをnextに変更
+      questionToPost.status = 'next';
       await saveQuestionQueue(currentQueue);
-      updateBadge('idle');
-      throw new Error('Question contains NG word');
     }
 
-    // YouTube Data API v3 liveChatMessages.insert を呼び出すロジック
+    // 共通の投稿ロジックを使用
+    return await performActualPost(questionToPost, currentQueue);
+  } catch (error) {
+    await errorHandler.handleError(error, 'postQuestionToLiveChat');
+    updateBadge('error');
+    const userMessage = getUserFriendlyErrorMessage(error);
+    sendNotification('投稿エラー', userMessage);
+    throw error;
+  }
+}
+
+/**
+ * 実際の投稿処理を行う共通関数
+ * @param {Object} questionToPost
+ * @param {Array} currentQueue
+ * @returns {Promise<Object>}
+ */
+async function performActualPost(questionToPost, currentQueue) {
+  console.log('Step 2: Processing question:', questionToPost.text.substring(0, 50) + '...');
+
+  // FR-4: 投稿内容の整形
+  const formattedText = await formatQuestionText(questionToPost.text);
+
+  // FR-9, 7.1: 入力サニタイズ (XSS防止) - 改善版
+  const sanitizeResult = inputValidator.sanitizeQuestionText(formattedText);
+  const sanitizedText = sanitizeResult.sanitized;
+  
+  // サニタイズの結果をログに記録
+  if (sanitizeResult.hadDangerousContent) {
+    console.warn('[Security] Dangerous content detected and removed from question');
+    await errorHandler.handleError(new Error('Dangerous content in question text'), 'sanitizeQuestion');
+  }
+  
+  if (sanitizeResult.wasModified) {
+    console.log(`[Security] Question text was sanitized: ${sanitizeResult.originalLength} -> ${sanitizeResult.sanitizedLength} chars`);
+  }
+
+  // FR-5: NGワードフィルタリング
+  console.log('Step 3: Checking NG keywords...');
+  const ngKeywords = await getNgKeywords(); // NGワードリストを取得
+  const isNg = ngKeywords.some(keyword => sanitizedText.includes(keyword)); // サニタイズ後のテキストでチェック
+
+  if (isNg) {
+    console.log('Question contains NG word. Skipping.');
+    questionToPost.status = 'skipped';
+    questionToPost.skipped_reason = 'NG word detected';
+    await saveQuestionQueue(currentQueue);
+    updateBadge('idle');
+    throw new Error('Question contains NG word');
+  }
+
+  // YouTube Data API v3 liveChatMessages.insert を呼び出すロジック
     console.log('Step 4: Getting Live Chat ID...');
     let liveChatId;
     try {
@@ -281,15 +566,18 @@ async function postQuestionToLiveChat() {
     } catch (error) {
       console.error('Failed to get Live Chat ID:', error);
       updateBadge('error');
-      sendNotification('投稿エラー', 'ライブチャットIDの取得に失敗しました: ' + error.message);
+      const userMessage = getUserFriendlyErrorMessage(error);
+      sendNotification('投稿エラー', userMessage);
       throw new Error('Failed to get Live Chat ID: ' + error.message);
     }
 
     if (!liveChatId) {
       console.error('Live Chat ID is not set. Cannot post.');
       updateBadge('error');
-      sendNotification('投稿エラー', 'ライブチャットIDが設定されていません');
-      throw new Error('Live Chat ID is not set');
+      const error = new Error('Live Chat ID is not set');
+      const userMessage = getUserFriendlyErrorMessage(error);
+      sendNotification('投稿エラー', userMessage);
+      throw error;
     }
 
     console.log('Step 5: Getting YouTube API Key...');
@@ -300,15 +588,18 @@ async function postQuestionToLiveChat() {
     } catch (error) {
       console.error('Failed to get YouTube API Key:', error);
       updateBadge('error');
-      sendNotification('投稿エラー', 'YouTube APIキーの取得に失敗しました: ' + error.message);
+      const userMessage = getUserFriendlyErrorMessage(error);
+      sendNotification('投稿エラー', userMessage);
       throw new Error('Failed to get YouTube API Key: ' + error.message);
     }
 
     if (!API_KEY) {
       console.error('YouTube Data API Key is not set. Cannot post.');
       updateBadge('error');
-      sendNotification('投稿エラー', 'YouTube Data APIキーが必要です');
-      throw new Error('YouTube Data API Key is not set');
+      const error = new Error('YouTube Data API Key is not set');
+      const userMessage = getUserFriendlyErrorMessage(error);
+      sendNotification('投稿エラー', userMessage);
+      throw error;
     }
 
     // テストモードの場合はOAuth認証をスキップ
@@ -327,24 +618,31 @@ async function postQuestionToLiveChat() {
       console.log('Step 6: Getting OAuth token...');
       try {
         accessToken = await getAuthToken();
-        console.log(`Access Token: ${accessToken ? 'obtained (' + accessToken.substring(0, 10) + '...)' : 'not available'}`);
+        if (DEBUG_MODE) {
+          console.log(`Access Token: ${accessToken ? 'obtained (***...)' : 'not available'}`);
+        }
       } catch (error) {
         console.error('Failed to get OAuth token:', error);
         updateBadge('error');
-        sendNotification('投稿エラー', 'OAuthトークンの取得に失敗しました: ' + error.message);
+        const userMessage = getUserFriendlyErrorMessage(error);
+        sendNotification('投稿エラー', userMessage);
         throw new Error('Failed to get OAuth token: ' + error.message);
       }
 
       if (!accessToken) {
         console.error('OAuth2 token not available. Cannot post.');
         updateBadge('error');
-        sendNotification('投稿エラー', 'OAuthトークンが利用できません');
-        throw new Error('OAuth2 token not available');
+        const error = new Error('OAuth2 token not available');
+        const userMessage = getUserFriendlyErrorMessage(error);
+        sendNotification('投稿エラー', userMessage);
+        throw error;
       }
     }
 
     console.log(`Step 7: Attempting to post to Live Chat ID: ${liveChatId}`);
-    console.log(`Using Access Token: ${accessToken.substring(0, 10)}...`);
+    if (DEBUG_MODE) {
+      console.log(`Using Access Token: ***...`);
+    }
     console.log(`Message: ${sanitizedText}`); // サニタイズ後のテキストをログに出力
 
     if (testMode) {
@@ -366,7 +664,7 @@ async function postQuestionToLiveChat() {
         body: JSON.stringify({
           snippet: {
             liveChatId: liveChatId,
-            type: 'textMessage',
+            type: 'textMessageEvent',
             textMessageDetails: {
               messageText: sanitizedText // サニタイズ後のテキストを送信
             }
@@ -375,9 +673,38 @@ async function postQuestionToLiveChat() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('YouTube API Error:', errorData);
-        throw new Error(`YouTube API Error: ${response.status} - ${errorData.error.message}`);
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+        }
+        
+        console.error('YouTube API Error:', { status: response.status, errorData });
+        
+        // ステータス別のエラーハンドリング
+        switch (response.status) {
+          case 401:
+            // 認証エラー：トークンが無効
+            console.warn('Authentication failed. Token may be expired.');
+            throw new Error('AUTHENTICATION_FAILED');
+          case 403:
+            // 権限エラー：APIキーまたはスコープの問題
+            console.warn('Permission denied. Check API key and OAuth scopes.');
+            throw new Error('PERMISSION_DENIED');
+          case 429:
+            // レート制限：指数バックオフで再試行
+            const retryAfter = response.headers.get('Retry-After') || 60;
+            console.warn(`Rate limited. Retry after ${retryAfter} seconds.`);
+            throw new Error(`RATE_LIMITED:${retryAfter}`);
+          case 400:
+            // リクエストエラー：データの問題
+            const message = errorData.error?.message || 'Invalid request';
+            throw new Error(`BAD_REQUEST: ${message}`);
+          default:
+            const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+            throw new Error(`YouTube API Error: ${response.status} - ${errorMessage}`);
+        }
       }
 
       console.log(`Successfully posted: ${sanitizedText}`);
@@ -397,8 +724,11 @@ async function postQuestionToLiveChat() {
         });
       });
 
-      const currentRetry = (postRetryCounts.get(questionToPost.id) || 0) + 1;
-      postRetryCounts.set(questionToPost.id, currentRetry);
+      const currentRetry = (postRetryCounts.get(questionToPost.id)?.count || 0) + 1;
+      postRetryCounts.set(questionToPost.id, { 
+        count: currentRetry, 
+        timestamp: Date.now() 
+      });
 
       if (currentRetry <= maxRetryAttempts) {
         console.warn(`Failed to post: ${sanitizedText}. Retrying (${currentRetry}/${maxRetryAttempts})...`);
@@ -415,13 +745,6 @@ async function postQuestionToLiveChat() {
         throw new Error(`Post failed after ${maxRetryAttempts} attempts: ${apiError.message}`);
       }
     }
-
-  } catch (error) {
-    console.error('Error posting to Live Chat:', error);
-    updateBadge('error');
-    sendNotification('投稿エラー', '予期しないエラーが発生しました');
-    throw error; // エラーを再スローして呼び出し元で処理できるようにする
-  }
 }
 
 /**
@@ -489,54 +812,69 @@ async function getLiveChatId() {
 }
 
 /**
- * YouTube API Key を chrome.storage.local から取得する
+ * YouTube API Key を安全に取得する（改善版）
  * @returns {Promise<string>}
  */
 async function getYoutubeApiKey() {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get('YOUTUBE_API_KEY', (data) => {
-      if (chrome.runtime.lastError) {
-        console.error('Storage error while getting YouTube API key:', chrome.runtime.lastError);
-        reject(new Error(`Storage error: ${chrome.runtime.lastError.message}`));
-      } else {
-        // フォールバック付きのAPIキー取得
-        const encryptedApiKey = data.YOUTUBE_API_KEY || '';
-        const tempApiKey = data.API_KEY_TEMP || '';
-        
-        if (encryptedApiKey) {
-          console.log('🔑 Attempting to decrypt stored API key...');
-          simpleDecrypt(encryptedApiKey).then(decryptedApiKey => {
-            if (!decryptedApiKey || decryptedApiKey.trim() === '') {
-              console.warn('🔑 Decrypted API key is empty, trying fallback...');
-              if (tempApiKey) {
-                console.log('🔑 Using fallback API key');
-                resolve(tempApiKey);
-              } else {
-                reject(new Error('API key decryption failed and no fallback available'));
-              }
-            } else {
-              console.log('🔑 API key decryption successful');
-              resolve(decryptedApiKey);
-            }
-          }).catch(error => {
-            console.error('🔑 Failed to decrypt API key:', error);
-            if (tempApiKey) {
-              console.log('🔑 Using fallback API key due to decryption error');
-              resolve(tempApiKey);
-            } else {
-              reject(new Error('API key decryption failed: ' + error.message));
-            }
-          });
-        } else if (tempApiKey) {
-          console.log('🔑 Using temporary API key (no encrypted version found)');
-          resolve(tempApiKey);
-        } else {
-          console.error('🔑 No API key found in storage');
-          reject(new Error('No API key found in storage'));
-        }
+  try {
+    // 改善されたストレージサービスを使用
+    const data = await storageService.getMultiple(['YOUTUBE_API_KEY', 'API_KEY_TEMP']);
+    
+    const encryptedApiKey = data.get('YOUTUBE_API_KEY') || '';
+    const tempApiKey = data.get('API_KEY_TEMP') || '';
+    
+    let finalApiKey = null;
+    
+    if (encryptedApiKey) {
+      if (DEBUG_MODE) {
+        console.log('🔑 Attempting to decrypt stored API key...');
       }
-    });
-  });
+      
+      try {
+        const decryptedApiKey = await simpleDecrypt(encryptedApiKey);
+        
+        if (!decryptedApiKey || decryptedApiKey.trim() === '') {
+          if (DEBUG_MODE) {
+            console.warn('🔑 Decrypted API key is empty, trying fallback...');
+          }
+          finalApiKey = tempApiKey;
+        } else {
+          // APIキーの形式を検証
+          const validation = inputValidator.validateApiKey(decryptedApiKey);
+          if (validation.isValid) {
+            finalApiKey = decryptedApiKey;
+            if (DEBUG_MODE) {
+              console.log('🔑 API key decryption and validation successful');
+            }
+          } else {
+            console.error('🔑 Decrypted API key failed validation:', validation.error);
+            finalApiKey = tempApiKey;
+          }
+        }
+      } catch (decryptError) {
+        console.error('🔑 Failed to decrypt API key:', decryptError.message);
+        finalApiKey = tempApiKey;
+      }
+    } else {
+      finalApiKey = tempApiKey;
+    }
+    
+    if (!finalApiKey) {
+      throw new Error('No API key found in storage');
+    }
+    
+    // 最終的なAPIキーの検証
+    const finalValidation = inputValidator.validateApiKey(finalApiKey);
+    if (!finalValidation.isValid) {
+      throw new Error(`API key validation failed: ${finalValidation.error}`);
+    }
+    
+    return finalApiKey;
+    
+  } catch (error) {
+    await errorHandler.handleError(error, 'getYoutubeApiKey');
+    throw error;
+  }
 }
 
 function updateBadge(status) {
@@ -565,8 +903,16 @@ async function getAuthToken() {
   return new Promise((resolve, reject) => {
     chrome.identity.getAuthToken({ interactive: true }, (token) => {
       if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
+        console.error('OAuth Error Details:', {
+          message: chrome.runtime.lastError.message,
+          error: chrome.runtime.lastError
+        });
+        reject(new Error(`OAuth failed: ${chrome.runtime.lastError.message}`));
+      } else if (!token) {
+        console.error('OAuth token is null or undefined');
+        reject(new Error('OAuth token is null'));
       } else {
+        console.log('OAuth token obtained successfully');
         resolve(token);
       }
     });
