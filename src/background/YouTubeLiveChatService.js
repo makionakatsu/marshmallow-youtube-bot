@@ -50,11 +50,13 @@ class YouTubeLiveChatService {
    */
   async postMessage(messageText, questionId) {
     try {
-      console.log(`[YouTubeLiveChatService] Posting message for question: ${questionId}`);
+      console.log(`[YouTubeLiveChatService] 📝 Starting post for question: ${questionId}`);
+      console.log(`[YouTubeLiveChatService] 📝 Original message: "${messageText}"`);
       
       // 入力検証とサニタイズ
       const sanitizeResult = this.inputValidator.sanitizeQuestionText(messageText);
       const sanitizedText = sanitizeResult.sanitized;
+      console.log(`[YouTubeLiveChatService] 📝 Sanitized message: "${sanitizedText}"`);
       
       if (sanitizeResult.hadDangerousContent) {
         console.warn('[Security] Dangerous content detected and removed');
@@ -65,29 +67,37 @@ class YouTubeLiveChatService {
       }
 
       // レート制限チェック
+      console.log('[YouTubeLiveChatService] ⏱️ Checking rate limit...');
       await this._enforceRateLimit();
 
       // 必要な認証情報を取得
+      console.log('[YouTubeLiveChatService] 🔐 Getting authentication data...');
       const { liveChatId, accessToken } = await this._getAuthenticationData();
+      console.log(`[YouTubeLiveChatService] 🔐 Live Chat ID: ${liveChatId ? 'SET' : 'NOT SET'}`);
+      console.log(`[YouTubeLiveChatService] 🔐 Access Token: ${accessToken ? 'SET' : 'NOT SET'}`);
 
       // テストモードチェック
       const testMode = await this.configManager.getTestMode();
+      console.log(`[YouTubeLiveChatService] 🧪 Test Mode: ${testMode ? 'ON' : 'OFF'}`);
       if (testMode) {
         console.log('🧪 TEST MODE: Skipping actual post to YouTube Live Chat');
-        console.log(`Message would be: ${sanitizedText}`);
+        console.log(`🧪 Message would be: ${sanitizedText}`);
         return { success: true, message: 'Test mode - message not actually sent' };
       }
 
       // YouTube API呼び出し
+      console.log('[YouTubeLiveChatService] 🚀 Calling YouTube API...');
       const result = await this._callYouTubeAPI(liveChatId, sanitizedText, accessToken);
+      console.log('[YouTubeLiveChatService] 🚀 YouTube API call successful');
       
       // 成功時の処理
       this.retryAttempts.delete(questionId);
-      console.log(`[YouTubeLiveChatService] Successfully posted: ${sanitizedText}`);
+      console.log(`[YouTubeLiveChatService] ✅ Successfully posted: "${sanitizedText}"`);
       
       return { success: true, message: 'Message posted successfully' };
 
     } catch (error) {
+      console.error(`[YouTubeLiveChatService] ❌ Post failed for question ${questionId}:`, error);
       return await this._handlePostError(error, questionId, messageText);
     }
   }
