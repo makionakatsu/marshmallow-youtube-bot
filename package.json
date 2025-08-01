@@ -4,22 +4,12 @@
   "description": "Marshmallow to YouTube Live Chat Bot - Chrome Extension",
   "main": "background.service_worker.js",
   "scripts": {
-    "build": "tsc --noEmit",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint src/**/*.{js,ts} --fix",
+    "lint": "eslint src/**/*.js --fix",
     "test": "echo \"Tests should be run in browser with tests/index.html\"",
-    "dev": "tsc --noEmit --watch",
-    "clean": "rm -rf dist",
-    "prepare": "npm run type-check",
-    "validate": "npm run type-check && npm run lint"
+    "validate": "npm run lint"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.268",
-    "@types/node": "^20.14.2",
-    "@typescript-eslint/eslint-plugin": "^7.13.0",
-    "@typescript-eslint/parser": "^7.13.0",
-    "eslint": "^8.57.0",
-    "typescript": "^5.4.5"
+    "eslint": "^8.57.0"
   },
   "keywords": [
     "chrome-extension",
