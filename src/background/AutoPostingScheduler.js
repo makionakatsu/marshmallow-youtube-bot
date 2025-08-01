@@ -351,13 +351,9 @@ class AutoPostingScheduler {
    * @private
    */
   _setupAlarmListener() {
-    chrome.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === this.currentAlarmName) {
-        this._handleScheduledPost();
-      }
-    });
-    
-    console.log('[AutoPostingScheduler] Alarm listener configured');
+    // アラームリスナーは background.service_worker.js で管理されるため、
+    // ここでは設定しない（重複を避けるため）
+    console.log('[AutoPostingScheduler] Alarm handler ready (managed by background worker)');
   }
 
   /**

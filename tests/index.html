@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marshmallow2YouTube - テスト実行</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        
+        .test-section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #bd2130;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .test-output {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-y: auto;
+            max-height: 400px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .test-summary {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .test-summary.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .test-summary.failure {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .test-summary.running {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-ready {
+            background-color: #6c757d;
+        }
+        
+        .status-running {
+            background-color: #007bff;
+            animation: pulse 1s infinite;
+        }
+        
+        .status-success {
+            background-color: #28a745;
+        }
+        
+        .status-failure {
+            background-color: #dc3545;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Marshmallow2YouTube テスト実行</h1>
+        
+        <div class="test-section">
+            <h2>テスト実行コントロール</h2>
+            <div class="test-controls">
+                <button class="btn btn-primary" onclick="runAllTests()">全テスト実行</button>
+                <button class="btn btn-secondary" onclick="runAsyncMutexTests()">AsyncMutex テスト</button>
+                <button class="btn btn-secondary" onclick="runStorageServiceTests()">StorageService テスト</button>
+                <button class="btn btn-secondary" onclick="runErrorHandlerTests()">ErrorHandler テスト</button>
+                <button class="btn btn-secondary" onclick="runInputValidatorTests()">InputValidator テスト</button>
+                <button class="btn btn-secondary" onclick="runVirtualScrollTests()">VirtualScroll テスト</button>
+                <button class="btn btn-secondary" onclick="runAppConfigTests()">AppConfig テスト</button>
+                <button class="btn btn-danger" onclick="clearOutput()">出力クリア</button>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            
+            <div class="test-summary" id="testSummary">
+                <span class="status-indicator status-ready"></span>
+                テスト準備完了
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>テスト出力</h2>
+            <div class="test-output" id="testOutput">テストを実行してください...</div>
+        </div>
+    </div>
+
+    <!-- テストランナーとテストファイルを読み込み -->
+    <script src="test-runner.js"></script>
+    <script src="AsyncMutex.test.js"></script>
+    <script src="OptimizedStorageService.test.js"></script>
+    <script src="UnifiedErrorHandler.test.js"></script>
+    <script src="InputValidator.test.js"></script>
+    <script src="VirtualScrollManager.test.js"></script>
+    <script src="AppConfig.test.js"></script>
+    
+    <script>
+        let testRunner;
+        let currentTestCount = 0;
+        let totalTestCount = 0;
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            testRunner = new TestRunner();
+            setupTestEnvironment();
+            
+            // コンソール出力をキャプチャ
+            interceptConsoleOutput();
+            
+            updateStatus('ready', 'テスト準備完了');
+        });
+        
+        function interceptConsoleOutput() {
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            
+            console.log = function(...args) {
+                appendToOutput(args.join(' '));
+                originalLog.apply(console, args);
+            };
+            
+            console.error = function(...args) {
+                appendToOutput('❌ ' + args.join(' '));
+                originalError.apply(console, args);
+            };
+            
+            console.warn = function(...args) {
+                appendToOutput('⚠️ ' + args.join(' '));
+                originalWarn.apply(console, args);
+            };
+        }
+        
+        function appendToOutput(text) {
+            const output = document.getElementById('testOutput');
+            output.textContent += text + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearOutput() {
+            document.getElementById('testOutput').textContent = '';
+            updateProgress(0);
+            updateStatus('ready', 'テスト準備完了');
+        }
+        
+        function updateProgress(percent) {
+            document.getElementById('progressFill').style.width = percent + '%';
+        }
+        
+        function updateStatus(status, message) {
+            const summary = document.getElementById('testSummary');
+            const indicator = summary.querySelector('.status-indicator');
+            
+            indicator.className = `status-indicator status-${status}`;
+            summary.className = `test-summary ${status}`;
+            summary.innerHTML = `<span class="status-indicator status-${status}"></span>${message}`;
+        }
+        
+        async function runAllTests() {
+            clearOutput();
+            updateStatus('running', 'テスト実行中...');
+            
+            try {
+                const results = await testRunner.runTests();
+                
+                updateProgress(100);
+                
+                if (results.failed === 0) {
+                    updateStatus('success', `✅ 全テスト完了: ${results.passed}/${results.total} 成功`);
+                } else {
+                    updateStatus('failure', `❌ テスト失敗: ${results.failed}/${results.total} 失敗`);
+                }
+                
+            } catch (error) {
+                updateStatus('failure', `❌ テスト実行エラー: ${error.message}`);
+                appendToOutput(`Error: ${error.message}`);
+            }
+        }
+        
+        async function runAsyncMutexTests() {
+            clearOutput();
+            updateStatus('running', 'AsyncMutex テスト実行中...');
+            
+            try {
+                await runAsyncMutexTests();
+                updateStatus('success', '✅ AsyncMutex テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ AsyncMutex テスト失敗: ${error.message}`);
+            }
+        }
+        
+        async function runStorageServiceTests() {
+            clearOutput();
+            updateStatus('running', 'StorageService テスト実行中...');
+            
+            try {
+                await runOptimizedStorageServiceTests();
+                updateStatus('success', '✅ StorageService テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ StorageService テスト失敗: ${error.message}`);
+            }
+        }
+        
+        async function runErrorHandlerTests() {
+            clearOutput();
+            updateStatus('running', 'ErrorHandler テスト実行中...');
+            
+            try {
+                await runUnifiedErrorHandlerTests();
+                updateStatus('success', '✅ ErrorHandler テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ ErrorHandler テスト失敗: ${error.message}`);
+            }
+        }
+        
+        async function runInputValidatorTests() {
+            clearOutput();
+            updateStatus('running', 'InputValidator テスト実行中...');
+            
+            try {
+                await runInputValidatorTests();
+                updateStatus('success', '✅ InputValidator テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ InputValidator テスト失敗: ${error.message}`);
+            }
+        }
+        
+        async function runVirtualScrollTests() {
+            clearOutput();
+            updateStatus('running', 'VirtualScroll テスト実行中...');
+            
+            try {
+                await runVirtualScrollManagerTests();
+                updateStatus('success', '✅ VirtualScroll テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ VirtualScroll テスト失敗: ${error.message}`);
+            }
+        }
+        
+        async function runAppConfigTests() {
+            clearOutput();
+            updateStatus('running', 'AppConfig テスト実行中...');
+            
+            try {
+                await runAppConfigTests();
+                updateStatus('success', '✅ AppConfig テスト完了');
+            } catch (error) {
+                updateStatus('failure', `❌ AppConfig テスト失敗: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

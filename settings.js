@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 投稿設定
     postIntervalInput.value = data.POST_INTERVAL_SEC || 120;
     maxRetryInput.value = data.MAX_RETRY_ATTEMPTS || 3;
-    questionPrefixInput.value = data.QUESTION_PREFIX || 'Q: ';
+    questionPrefixInput.value = data.QUESTION_PREFIX || '【質問】';
     
     // NGワード
     if (data.NG_KEYWORDS && Array.isArray(data.NG_KEYWORDS)) {
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   saveOtherSettingsButton.addEventListener('click', async () => {
     const postInterval = parseInt(postIntervalInput.value) || 120;
     const maxRetry = parseInt(maxRetryInput.value) || 3;
-    const questionPrefix = questionPrefixInput.value || 'Q: ';
+    const questionPrefix = questionPrefixInput.value || '【質問】';
     const testMode = testModeCheckbox.checked;
     const notificationsEnabled = notificationsCheckbox.checked;
     

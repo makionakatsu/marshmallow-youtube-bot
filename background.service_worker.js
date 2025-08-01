@@ -178,8 +178,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       return;
     }
     
-    // 新しいスケジューラーはサービスマネージャー内で自動処理される
-    console.log(`[BackgroundWorker] Alarm ${alarm.name} handled by service manager`);
+    // スケジューラーのアラーム処理を委譲
+    if (alarm.name === 'postLiveChat' && serviceManager.scheduler) {
+      console.log(`[BackgroundWorker] Delegating alarm ${alarm.name} to scheduler`);
+      await serviceManager.scheduler._handleScheduledPost();
+    } else {
+      console.log(`[BackgroundWorker] Unknown alarm: ${alarm.name}`);
+    }
     
   } catch (error) {
     console.error('[BackgroundWorker] Alarm handling error:', error);
@@ -193,7 +198,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // サービスマネージャーが利用可能な場合は委譲
   if (serviceManager && serviceManager.isInitialized) {
-    // BackgroundServiceManager が処理
+    // BackgroundServiceManagerのメッセージハンドラーを呼び出し
+    serviceManager._handleMessage(request, sender, sendResponse);
     return true;
   }
   

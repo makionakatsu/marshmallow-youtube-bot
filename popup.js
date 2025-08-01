@@ -1,4 +1,27 @@
 // popup.js
+
+// 仮想スクロールマネージャーを動的に読み込み
+let VirtualScrollManager = null;
+
+// 既に読み込まれているかチェック
+if (typeof window.VirtualScrollManager !== 'undefined') {
+  VirtualScrollManager = window.VirtualScrollManager;
+} else {
+  try {
+    const script = document.createElement('script');
+    script.src = 'src/shared/ui/VirtualScrollManager.js';
+    script.onload = () => {
+      VirtualScrollManager = window.VirtualScrollManager;
+    };
+    script.onerror = () => {
+      console.warn('VirtualScrollManager failed to load, falling back to regular scrolling');
+    };
+    document.head.appendChild(script);
+  } catch (error) {
+    console.warn('VirtualScrollManager not loaded, falling back to regular scrolling');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const startButton = document.getElementById('startButton');
   const stopButton = document.getElementById('stopButton');
@@ -24,6 +47,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const queueDisplay = document.getElementById('queueDisplay');
   const modeToggleButton = document.getElementById('modeToggleButton');
   const marshmallowStatus = document.getElementById('marshmallowStatus');
+  
+  // 仮想スクロールマネージャーの初期化
+  let virtualScrollManager = null;
+  let isVirtualScrollEnabled = false;
 
   // 日本語テキストを設定
   document.title = 'Marshmallow to YouTube Bot';
@@ -100,10 +127,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   startButton.addEventListener('click', () => {
     chrome.storage.local.set({ isRunning: true });
+    
+    // アラームを作成して自動投稿を開始
+    chrome.storage.local.get(['POST_INTERVAL_SEC'], (result) => {
+      const postInterval = result.POST_INTERVAL_SEC || 120;
+      chrome.alarms.create('postLiveChat', {
+        periodInMinutes: postInterval / 60
+      });
+      console.log('Auto posting started with interval:', postInterval, 'seconds');
+    });
   });
 
   stopButton.addEventListener('click', () => {
     chrome.storage.local.set({ isRunning: false });
+    
+    // アラームを削除して自動投稿を停止
+    chrome.alarms.clear('postLiveChat');
+    console.log('Auto posting stopped');
   });
 
   modeToggleButton.addEventListener('click', () => {
@@ -132,18 +172,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const videoId = extractVideoIdFromUrl(url);
     if (videoId) {
       // APIキーが設定されているか確認してから情報を取得
-      chrome.storage.local.get('YOUTUBE_API_KEY', async (data) => {
-        if (!data.YOUTUBE_API_KEY) {
-          showUrlStatusMessage('YouTube Data API キーが必要です', 'orange');
-          hideLiveInfo();
-          return;
-        }
-
-        // APIキーを取得（暗号化されている場合はフォールバック使用）
-        const decryptedApiKey = data.API_KEY_TEMP || '';
-
+      // background.service_workerにAPIキーの取得も任せる
+      try {
         // サムネイルとタイトル、liveChatIdを取得するリクエストをbackgroundに送信
-        const response = await chrome.runtime.sendMessage({ action: 'getLiveVideoInfo', videoId: videoId, apiKey: decryptedApiKey });
+        const response = await chrome.runtime.sendMessage({ action: 'getLiveVideoInfo', videoId: videoId, apiKey: 'REQUEST_FROM_BACKGROUND' });
         console.log('Response from background for getLiveVideoInfo:', response);
         
         if (response && response.error) {
@@ -172,7 +204,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           await chrome.storage.local.remove('LIVE_CHAT_ID');
           await chrome.storage.local.remove('LIVE_VIDEO_INFO');
         }
-      });
+      } catch (error) {
+        console.error('Error getting live video info:', error);
+        showUrlStatusMessage('動画情報の取得に失敗しました: ' + error.message, 'red');
+        hideLiveInfo();
+        await chrome.storage.local.remove('LIVE_CHAT_ID');
+        await chrome.storage.local.remove('LIVE_VIDEO_INFO');
+      }
 
     } else {
       showUrlStatusMessage('無効なURLです', 'red');
@@ -347,30 +385,74 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function extractVideoIdFromUrl(url) {
     try {
-      const urlObj = new URL(url);
-      // YouTubeの通常動画URL、ライブチャットポップアウトURL、新しいライブ配信URLからvパラメータまたはパスを抽出
-      if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
-        // watch?v=VIDEO_ID または live_chat?v=VIDEO_ID の形式
-        const videoIdParam = urlObj.searchParams.get('v');
-        if (videoIdParam) {
-          return videoIdParam;
+      // 新しい InputValidator を使用（簡易版）
+      const validator = {
+        validateYouTubeUrl: function(url) {
+          // 基本的な検証
+          if (!url || typeof url !== 'string') {
+            return { isValid: false, error: 'URL is required', videoId: null };
+          }
+          
+          if (url.length > 2000) {
+            return { isValid: false, error: 'URL is too long', videoId: null };
+          }
+          
+          const urlObj = new URL(url);
+          
+          // ドメインチェック
+          const allowedDomains = ['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com'];
+          if (!allowedDomains.includes(urlObj.hostname)) {
+            return { isValid: false, error: 'Invalid domain', videoId: null };
+          }
+          
+          // プロトコルチェック
+          if (urlObj.protocol !== 'https:' && urlObj.protocol !== 'http:') {
+            return { isValid: false, error: 'Invalid protocol', videoId: null };
+          }
+          
+          // Video ID抽出
+          let videoId = null;
+          
+          // watch?v=VIDEO_ID または live_chat?v=VIDEO_ID の形式
+          const videoIdParam = urlObj.searchParams.get('v');
+          if (videoIdParam) {
+            videoId = videoIdParam;
+          } else if (urlObj.hostname === 'youtu.be') {
+            // youtu.be ショートURL対応
+            videoId = urlObj.pathname.substring(1);
+          } else {
+            // youtube.com/live/VIDEO_ID の形式
+            const livePathMatch = urlObj.pathname.match(/\/live\/([a-zA-Z0-9_-]+)/);
+            if (livePathMatch && livePathMatch[1]) {
+              videoId = livePathMatch[1];
+            }
+          }
+          
+          if (!videoId) {
+            return { isValid: false, error: 'Could not extract video ID', videoId: null };
+          }
+          
+          // Video ID検証
+          if (videoId.length !== 11 || !/^[a-zA-Z0-9_-]+$/.test(videoId)) {
+            return { isValid: false, error: 'Invalid video ID format', videoId: null };
+          }
+          
+          return { isValid: true, error: null, videoId: videoId };
         }
-
-        // youtu.be ショートURL対応
-        if (urlObj.hostname === 'youtu.be') {
-          return urlObj.pathname.substring(1);
-        }
-
-        // youtube.com/live/VIDEO_ID の形式
-        const livePathMatch = urlObj.pathname.match(/\/live\/([a-zA-Z0-9_-]+)/);
-        if (livePathMatch && livePathMatch[1]) {
-          return livePathMatch[1];
-        }
+      };
+      
+      const result = validator.validateYouTubeUrl(url);
+      if (!result.isValid) {
+        console.error('URL validation failed:', result.error);
+        return null;
       }
+      
+      return result.videoId;
+      
     } catch (e) {
       console.error('Invalid URL format:', e);
+      return null;
     }
-    return null;
   }
 
   function displayLiveInfo(thumbnailUrl, title, isLive) {
@@ -439,23 +521,204 @@ document.addEventListener('DOMContentLoaded', async () => {
       queueDisplay.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">キューは空です</div>';
       return;
     }
-
-    queueDisplay.innerHTML = queue.map((q, index) => `
-      <div class="queue-item status-${q.status}">
-        <span class="queue-text">${q.text}</span>
-        <span class="queue-status">${q.status}</span>
-        <button class="delete-btn" data-question-id="${q.id}">削除</button>
-      </div>
-    `).join('');
     
-    // 削除ボタンのイベントリスナーを追加
-    const deleteButtons = queueDisplay.querySelectorAll('.delete-btn');
-    deleteButtons.forEach(button => {
-      button.addEventListener('click', async (event) => {
-        const questionId = event.target.getAttribute('data-question-id');
-        await deleteQuestion(questionId);
+    // 既存の質問で正確な時刻がない場合（すべて同じ時刻など）の修正
+    let needsTimeFixing = false;
+    const times = queue.map(q => new Date(q.received_at).getTime());
+    const uniqueTimes = new Set(times);
+    
+    // ほとんどの質問が同じ時刻の場合は時刻修正が必要
+    if (uniqueTimes.size < queue.length * 0.5) {
+      needsTimeFixing = true;
+      console.log('Detected identical timestamps, fixing queue order...');
+      
+      // IDでソートしてから時刻を再設定
+      queue.sort((a, b) => a.id.localeCompare(b.id));
+      const baseTime = new Date();
+      queue.forEach((q, index) => {
+        baseTime.setMinutes(baseTime.getMinutes() - (queue.length - index) * 5);
+        q.received_at = baseTime.toISOString();
       });
+      
+      await saveQuestionQueue(queue);
+    }
+
+    // キューを受信日時順でソート（古いものが上に）
+    // 同じ時刻の場合はIDで安定ソート
+    queue.sort((a, b) => {
+      const timeA = new Date(a.received_at).getTime();
+      const timeB = new Date(b.received_at).getTime();
+      if (timeA === timeB) {
+        return a.id.localeCompare(b.id); // IDで安定ソート
+      }
+      return timeA - timeB;
     });
+
+    // 仮想スクロールを使用するかどうかの判定
+    const useVirtualScroll = VirtualScrollManager && queue.length > 50;
+    
+    if (useVirtualScroll && !isVirtualScrollEnabled) {
+      // 仮想スクロールを初期化
+      initVirtualScroll();
+    } else if (!useVirtualScroll && isVirtualScrollEnabled) {
+      // 仮想スクロールを無効化
+      disableVirtualScroll();
+    }
+    
+    if (isVirtualScrollEnabled) {
+      // 仮想スクロールでの描画
+      renderWithVirtualScroll(queue);
+    } else {
+      // 通常の描画
+      renderWithNormalScroll(queue);
+    }
+  }
+  
+  function initVirtualScroll() {
+    if (!VirtualScrollManager) return;
+    
+    try {
+      virtualScrollManager = new VirtualScrollManager(queueDisplay, {
+        itemHeight: 80,
+        containerHeight: 200,
+        overscan: 5,
+        enableDebug: false
+      });
+      
+      // カスタムレンダラーを設定
+      virtualScrollManager.renderItemContent = (element, item, index) => {
+        const statusText = getStatusDisplayText(item.status);
+        const statusIcon = getStatusIcon(item.status);
+        const isNext = item.status === 'next';
+        const canManualSend = item.status === 'pending' || item.status === 'next';
+        const canSetNext = item.status === 'pending';
+        
+        element.className = `queue-item status-${item.status} ${isNext ? 'next-item' : ''} ${canSetNext ? 'clickable' : ''}`;
+        element.setAttribute('data-question-id', item.id);
+        
+        if (canSetNext) {
+          element.setAttribute('title', 'クリックしてNEXTに設定');
+        }
+        
+        element.innerHTML = `
+          <div class="queue-item-header">
+            <span class="queue-status-icon">${statusIcon}</span>
+            <span class="queue-status-text">${statusText}</span>
+            ${isNext ? '<span class="next-badge">NEXT</span>' : ''}
+            <div class="queue-actions">
+              ${canManualSend ? `<button class="manual-send-btn" data-question-id="${item.id}" title="手動送信">✈️</button>` : ''}
+              <button class="delete-btn" data-question-id="${item.id}" title="削除">🗑️</button>
+            </div>
+          </div>
+          <div class="queue-text">${item.text}</div>
+          <div class="queue-meta">
+            受信: ${new Date(item.received_at).toLocaleString()}
+            ${item.sent_at ? ` | 送信: ${new Date(item.sent_at).toLocaleString()}` : ''}
+            ${item.skipped_reason ? ` | スキップ理由: ${item.skipped_reason}` : ''}
+          </div>
+        `;
+        
+        // イベントリスナーを追加
+        attachQueueItemEvents(element, item);
+      };
+      
+      isVirtualScrollEnabled = true;
+      console.log('Virtual scroll enabled for queue display');
+      
+    } catch (error) {
+      console.error('Failed to initialize virtual scroll:', error);
+      isVirtualScrollEnabled = false;
+    }
+  }
+  
+  function disableVirtualScroll() {
+    if (virtualScrollManager) {
+      virtualScrollManager.destroy();
+      virtualScrollManager = null;
+    }
+    isVirtualScrollEnabled = false;
+    console.log('Virtual scroll disabled');
+  }
+  
+  function renderWithVirtualScroll(queue) {
+    if (virtualScrollManager) {
+      virtualScrollManager.setItems(queue);
+    }
+  }
+  
+  function renderWithNormalScroll(queue) {
+    queueDisplay.innerHTML = queue.map((q, index) => {
+      const statusText = getStatusDisplayText(q.status);
+      const statusIcon = getStatusIcon(q.status);
+      const isNext = q.status === 'next';
+      const canManualSend = q.status === 'pending' || q.status === 'next';
+      const canSetNext = q.status === 'pending';
+      
+      return `
+        <div class="queue-item status-${q.status} ${isNext ? 'next-item' : ''} ${canSetNext ? 'clickable' : ''}" 
+             data-question-id="${q.id}" 
+             ${canSetNext ? 'title="クリックしてNEXTに設定"' : ''}>
+          <div class="queue-item-header">
+            <span class="queue-status-icon">${statusIcon}</span>
+            <span class="queue-status-text">${statusText}</span>
+            ${isNext ? '<span class="next-badge">NEXT</span>' : ''}
+            <div class="queue-actions">
+              ${canManualSend ? `<button class="manual-send-btn" data-question-id="${q.id}" title="手動送信">✈️</button>` : ''}
+              <button class="delete-btn" data-question-id="${q.id}" title="削除">🗑️</button>
+            </div>
+          </div>
+          <div class="queue-text">${q.text}</div>
+          <div class="queue-meta">
+            受信: ${new Date(q.received_at).toLocaleString()}
+            ${q.sent_at ? ` | 送信: ${new Date(q.sent_at).toLocaleString()}` : ''}
+            ${q.skipped_reason ? ` | スキップ理由: ${q.skipped_reason}` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    // イベントリスナーを一括追加
+    const queueItems = queueDisplay.querySelectorAll('.queue-item');
+    queueItems.forEach(item => {
+      const questionId = item.getAttribute('data-question-id');
+      const question = queue.find(q => q.id === questionId);
+      if (question) {
+        attachQueueItemEvents(item, question);
+      }
+    });
+  }
+  
+  function attachQueueItemEvents(element, item) {
+    // 削除ボタンのイベント
+    const deleteBtn = element.querySelector('.delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        await deleteQuestion(item.id);
+      });
+    }
+
+    // 手動送信ボタンのイベント
+    const manualSendBtn = element.querySelector('.manual-send-btn');
+    if (manualSendBtn) {
+      manualSendBtn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        await manualSendQuestion(item.id);
+      });
+    }
+
+    // アイテムクリックイベント
+    if (item.status === 'pending') {
+      element.addEventListener('click', async (event) => {
+        // ボタンクリックの場合は処理しない
+        if (event.target.classList.contains('manual-send-btn') || 
+            event.target.classList.contains('delete-btn')) {
+          return;
+        }
+        
+        await setQuestionAsNext(item.id);
+      });
+    }
   }
 
   async function getQuestionQueue() {
@@ -472,6 +735,64 @@ document.addEventListener('DOMContentLoaded', async () => {
         resolve();
       });
     });
+  }
+
+  function getStatusDisplayText(status) {
+    switch (status) {
+      case 'pending': return '待機中';
+      case 'next': return '送信中';
+      case 'sent': return '送信済み';
+      case 'skipped': return 'スキップ';
+      default: return status;
+    }
+  }
+
+  function getStatusIcon(status) {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'next': return '🚀';
+      case 'sent': return '✅';
+      case 'skipped': return '⏭️';
+      default: return '❓';
+    }
+  }
+
+  async function manualSendQuestion(questionId) {
+    try {
+      const response = await chrome.runtime.sendMessage({ 
+        action: 'manualPost', 
+        questionId: questionId 
+      });
+      
+      if (response.success) {
+        alert('質問を送信しました: ' + response.message);
+        await displayQuestionQueue(); // キューを更新
+      } else {
+        alert('送信に失敗しました: ' + response.error);
+      }
+    } catch (error) {
+      console.error('Manual send failed:', error);
+      alert('送信に失敗しました: ' + error.message);
+    }
+  }
+
+  async function setQuestionAsNext(questionId) {
+    try {
+      console.log('Setting question as next:', questionId);
+      const response = await chrome.runtime.sendMessage({ 
+        action: 'setQuestionAsNext', 
+        questionId: questionId 
+      });
+      
+      if (response.success) {
+        await displayQuestionQueue(); // キューを更新
+        console.log('Question set as next:', questionId);
+      } else {
+        console.warn('Failed to set question as next:', response.error);
+      }
+    } catch (error) {
+      console.error('Failed to set question as next:', error);
+    }
   }
 
   async function deleteQuestion(questionId) {

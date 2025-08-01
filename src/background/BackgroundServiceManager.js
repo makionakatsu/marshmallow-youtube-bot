@@ -408,13 +408,13 @@ class BackgroundServiceManager {
   _setupEventListeners() {
     console.log('[BackgroundServiceManager] Setting up event listeners');
     
-    // メッセージリスナー
-    chrome.runtime.onMessage.addListener(this._messageHandler);
+    // メッセージリスナーは background.service_worker.js で管理されるため、ここでは設定しない
+    // chrome.runtime.onMessage.addListener(this._messageHandler);
     
     // ストレージ変更リスナー
     chrome.storage.onChanged.addListener(this._storageChangeHandler);
     
-    // 拡張機能停止リスナー
+    // 拡張機能停止リスナー  
     chrome.runtime.onSuspend.addListener(this._suspendHandler);
   }
 
@@ -426,7 +426,8 @@ class BackgroundServiceManager {
     console.log('[BackgroundServiceManager] Removing event listeners');
     
     try {
-      chrome.runtime.onMessage.removeListener(this._messageHandler);
+      // メッセージリスナーは background.service_worker.js で管理されるため、ここでは削除しない
+      // chrome.runtime.onMessage.removeListener(this._messageHandler);
       chrome.storage.onChanged.removeListener(this._storageChangeHandler);
       chrome.runtime.onSuspend.removeListener(this._suspendHandler);
     } catch (error) {
