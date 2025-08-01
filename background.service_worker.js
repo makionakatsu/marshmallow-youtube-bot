@@ -369,9 +369,10 @@ async function generateEncryptionKey() {
     const deviceInfo = [
       navigator.userAgent,
       navigator.language,
-      screen.width + 'x' + screen.height,
+      '1920x1080', // Service Worker では screen が利用できないため固定値
       new Date().getTimezoneOffset(),
-      navigator.hardwareConcurrency || 4
+      navigator.hardwareConcurrency || 4,
+      Date.now().toString() // 追加のエントロピー
     ].join('|');
     
     console.log(`[BackgroundWorker] 🔑 Device info length: ${deviceInfo.length}`);
