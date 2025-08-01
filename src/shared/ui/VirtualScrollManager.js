@@ -455,7 +455,7 @@ if (typeof globalObj.VirtualScrollManager !== 'undefined') {
     this.visibleElements = [];
     this.elementPool = [];
   }
-  
+
   // CommonJS と ES6 modules の両方に対応
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = VirtualScrollManager;
