@@ -45,7 +45,6 @@ class BackgroundServiceManager {
     
     // イベントハンドラーのバインド
     this._messageHandler = this._handleMessage.bind(this);
-    this._alarmHandler = this._handleAlarm.bind(this);
     this._suspendHandler = this._handleSuspend.bind(this);
     this._storageChangeHandler = this._handleStorageChange.bind(this);
   }
