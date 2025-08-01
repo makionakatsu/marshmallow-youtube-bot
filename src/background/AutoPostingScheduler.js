@@ -606,6 +606,6 @@ class AutoPostingScheduler {
 // モジュールとして利用可能にする
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AutoPostingScheduler;
-} else if (typeof window !== 'undefined') {
-  window.AutoPostingScheduler = AutoPostingScheduler;
+} else if (typeof self !== 'undefined') {
+  self.AutoPostingScheduler = AutoPostingScheduler;
 }

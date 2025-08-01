@@ -557,6 +557,6 @@ class QuestionQueueManager {
 // モジュールとして利用可能にする
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = QuestionQueueManager;
-} else if (typeof window !== 'undefined') {
-  window.QuestionQueueManager = QuestionQueueManager;
+} else if (typeof self !== 'undefined') {
+  self.QuestionQueueManager = QuestionQueueManager;
 }

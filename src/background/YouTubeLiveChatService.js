@@ -373,6 +373,6 @@ class YouTubeLiveChatService {
 // モジュールとして利用可能にする
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = YouTubeLiveChatService;
-} else if (typeof window !== 'undefined') {
-  window.YouTubeLiveChatService = YouTubeLiveChatService;
+} else if (typeof self !== 'undefined') {
+  self.YouTubeLiveChatService = YouTubeLiveChatService;
 }

@@ -670,9 +670,9 @@ class BackgroundServiceManager {
   }
 }
 
-// グローバルインスタンスを作成（既存コードとの互換性のため）
-if (typeof window !== 'undefined') {
-  window.BackgroundServiceManager = BackgroundServiceManager;
+// グローバルインスタンスを作成（Service Worker用）
+if (typeof self !== 'undefined') {
+  self.BackgroundServiceManager = BackgroundServiceManager;
 }
 
 // モジュールとして利用可能にする

@@ -439,9 +439,9 @@ async function simpleDecrypt(encryptedText) {
 // 開発者向けデバッグ機能
 // ===========================================
 
-// デバッグ用グローバル関数
-if (typeof window !== 'undefined') {
-  window.debugBackgroundWorker = {
+// デバッグ用グローバル関数（Service Worker用）
+if (typeof self !== 'undefined') {
+  self.debugBackgroundWorker = {
     serviceManager: () => serviceManager,
     isRunning: () => isRunning,
     postRetryCounts: () => postRetryCounts,

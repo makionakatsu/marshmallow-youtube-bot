@@ -687,6 +687,6 @@ class ConfigurationManager {
 // モジュールとして利用可能にする
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = ConfigurationManager;
-} else if (typeof window !== 'undefined') {
-  window.ConfigurationManager = ConfigurationManager;
+} else if (typeof self !== 'undefined') {
+  self.ConfigurationManager = ConfigurationManager;
 }
