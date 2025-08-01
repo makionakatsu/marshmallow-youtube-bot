@@ -613,6 +613,8 @@ class AppConfig {
 // CommonJS と ES6 modules の両方に対応
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AppConfig;
-} else if (typeof window !== 'undefined') {
-  window.AppConfig = AppConfig;
+} else {
+  // 環境に応じてグローバルオブジェクトを選択
+  const globalObj = (typeof window !== 'undefined') ? window : self;
+  globalObj.AppConfig = AppConfig;
 }

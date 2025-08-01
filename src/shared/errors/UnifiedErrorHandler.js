@@ -510,14 +510,17 @@ class UnifiedErrorHandler {
    * グローバルエラーハンドラーを設定
    */
   setupGlobalErrorHandlers() {
+    // 環境に応じてグローバルオブジェクトを選択
+    const globalObj = (typeof window !== 'undefined') ? window : self;
+    
     // 未処理のPromise拒否
-    if (typeof window !== 'undefined') {
-      window.addEventListener('unhandledrejection', (event) => {
+    if (typeof globalObj !== 'undefined' && globalObj.addEventListener) {
+      globalObj.addEventListener('unhandledrejection', (event) => {
         this.handleError(event.reason, 'unhandledrejection');
       });
       
       // 未処理のエラー
-      window.addEventListener('error', (event) => {
+      globalObj.addEventListener('error', (event) => {
         this.handleError(event.error, 'global');
       });
     }
@@ -561,6 +564,8 @@ class UnifiedErrorHandler {
 // CommonJS と ES6 modules の両方に対応
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = UnifiedErrorHandler;
-} else if (typeof window !== 'undefined') {
-  window.UnifiedErrorHandler = UnifiedErrorHandler;
+} else {
+  // 環境に応じてグローバルオブジェクトを選択
+  const globalObj = (typeof window !== 'undefined') ? window : self;
+  globalObj.UnifiedErrorHandler = UnifiedErrorHandler;
 }

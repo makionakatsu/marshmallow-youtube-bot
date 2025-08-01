@@ -1,5 +1,6 @@
 // 重複宣言を防ぐ
-if (typeof window.VirtualScrollManager !== 'undefined') {
+const globalObj = (typeof window !== 'undefined') ? window : self;
+if (typeof globalObj.VirtualScrollManager !== 'undefined') {
   // 既に定義されている場合は何もしない
 } else {
   /**
@@ -458,7 +459,7 @@ if (typeof window.VirtualScrollManager !== 'undefined') {
   // CommonJS と ES6 modules の両方に対応
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = VirtualScrollManager;
-  } else if (typeof window !== 'undefined') {
-    window.VirtualScrollManager = VirtualScrollManager;
+  } else {
+    globalObj.VirtualScrollManager = VirtualScrollManager;
   }
 }
