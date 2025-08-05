@@ -134,7 +134,7 @@
 ```
 marshmallow2youtube/
 ├── 📄 manifest.json                    # Chrome拡張機能設定
-├── 📄 content_script_v2.js            # メインContent Script (V2.0本格運用版)
+├── 📄 content_script.js               # メインContent Script
 ├── 📄 background.service_worker.js    # Background Script
 ├── 📄 popup.html                      # ポップアップUI
 ├── 📄 popup.js                        # ポップアップロジック
@@ -203,7 +203,7 @@ marshmallow2youtube/
 
 2. **セレクタの修正**
    ```javascript
-   // content_script_v2.js内の要修正箇所（V2.0クラスベース設計）
+   // content_script.js内の要修正箇所
    MarshmallowPageInteractor.checkLoginStatus()    // ログイン判定
    MarshmallowPageInteractor.extractMessages()     // メッセージ抽出
    DOMWatcher.observe()                            // DOM監視対象

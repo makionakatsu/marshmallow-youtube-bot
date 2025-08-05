@@ -10,7 +10,7 @@
 ```
 marshmallow2youtube/
 ├── 📄 manifest.json                    # Chrome拡張機能設定
-├── 📄 content_script_v2.js            # メインContent Script (V2.0本格運用版)
+├── 📄 content_script.js               # メインContent Script
 ├── 📄 background.service_worker.js    # Background Script
 ├── 📄 popup.html                      # ポップアップUI
 ├── 📄 popup.js                        # ポップアップロジック
@@ -63,7 +63,7 @@ marshmallow2youtube/
 
 #### Core ファイル
 - `manifest.json` - Chrome拡張機能の設定
-- `content_script_v2.js` - メインロジック (V2.0リファクタリング版)
+- `content_script.js` - メインロジック
 - `background.service_worker.js` - Background処理
 - `popup.html/js` - ユーザーインターフェース
 - `settings.html/js` - 設定管理
@@ -169,7 +169,7 @@ rm test_comprehensive.html
 #### 開発フロー
 1. **要件確認**: `docs/operations/REQUIREMENTS_V2.md`
 2. **設計確認**: `docs/development/REFACTORING_SUMMARY.md`
-3. **実装**: `content_script_v2.js` 修正
+3. **実装**: `content_script.js` 修正
 4. **テスト**: `archive/tests/` のテストツール活用
 5. **ドキュメント更新**: 該当ドキュメントの更新
 
@@ -196,7 +196,7 @@ cp archive/content_script.js .  # 旧版への一時復旧
 cp archive/tests/* .             # テスト環境復旧
 
 # manifest.json での切り替え
-# "content_script_v2.js" -> "content_script.js"
+# content_script.js が最新版
 ```
 
 ---

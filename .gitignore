@@ -138,3 +138,9 @@ temp/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Development and archive documentation (not for public)
+archive/
+docs/development/
+docs/operations/
+OAUTH_SETUP.md
